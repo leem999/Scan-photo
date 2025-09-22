@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --info --warning-mode all clean assembleDebug | tee build.log
+          run: ./gradlew --no-daemon --no-parallel --max-workers=2 -Dorg.gradle.jvmargs="-Xmx1024m -Dfile.encoding=UTF-8" --stacktrace --info clean assembleDebug | tee build.log
 
       - name: Upload build log (always)
         if: always()
