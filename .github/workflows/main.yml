@@ -30,11 +30,41 @@ jobs:
         with:
           cache-disabled: true
 
-      - name: Generate Gradle Wrapper (always)
+      - name: Ensure Gradle Wrapper (robust)
+        shell: bash
         run: |
-          curl -L -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.8-bin.zip
+          set -e
+          if [ -x "./gradlew" ] && [ -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "gradlew & wrapper jar already present."
+            exit 0
+          fi
+
+          echo "Fetching Gradle 8.8 to generate wrapper (with retries)..."
+          URL="https://services.gradle.org/distributions/gradle-8.8-bin.zip"
+
+          # 重试 6 次：2s/5s/8s/12s/18s/25s 回退
+          for i in 1 2 3 4 5 6; do
+            if curl -L --fail --retry 6 --retry-all-errors --connect-timeout 20 --max-time 300 \
+               -o /tmp/gradle.zip "$URL"; then
+              break
+            fi
+            sleep $(( i==1 ? 2 : (i==2 ? 5 : (i==3 ? 8 : (i==4 ? 12 : (i==5 ? 18 : 25)))) ))
+            echo "Retry #$i ..."
+          done
+
+          if [ ! -s /tmp/gradle.zip ]; then
+            echo "❌ Failed to download Gradle distribution after retries."
+            exit 1
+          fi
+
           unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.8/bin/gradle -v
           /tmp/gradle-8.8/bin/gradle wrapper --gradle-version 8.8
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
