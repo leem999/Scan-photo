@@ -1,26 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="cn.hn.monitor.qrtriggercamera">
+  package="cn.hn.monitor.qrtriggercamera">
 
-    <!-- 相机权限 -->
-    <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.CAMERA" />
 
-    <application
-        android:allowBackup="true"
-        android:label="扫码触发拍照"
-        android:icon="@mipmap/ic_launcher"
-        android:supportsRtl="true">
-
-        <!-- 注意：Android 12+ 必须显式声明 exported -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="portrait">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-
-    </application>
+  <application
+    android:label="@string/app_name"
+    android:theme="@style/Theme.App">
+    <activity
+      android:name=".MainActivity"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+  </application>
 </manifest>
