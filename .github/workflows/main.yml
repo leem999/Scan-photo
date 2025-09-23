@@ -41,21 +41,44 @@ jobs:
           fi
 
       # ---- 2) 如缺失，则下载 Gradle 并生成 wrapper（分成三步，避免多行脚本） ----
-      - name: Download Gradle 8.8 (with retries)
-        if: steps.detect.outputs.need_wrap == 'yes'
+      - name: Ensure Gradle Wrapper (safe with retries)
         shell: bash
-        run: curl -L --fail --retry 6 --retry-all-errors --connect-timeout 20 --max-time 300 \
-             -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.8-bin.zip
+        run: |
+          set -euo pipefail
+          # 如果已有 wrapper，直接跳过
+          if [[ -x "./gradlew" && -f "./gradle/wrapper/gradle-wrapper.jar" ]]; then
+           echo "gradlew & wrapper jar already present."
+            exit 0
+          fi
 
-      - name: Unzip Gradle
-        if: steps.detect.outputs.need_wrap == 'yes'
-        shell: bash
-        run: unzip -q /tmp/gradle.zip -d /tmp
+          URL="https://services.gradle.org/distributions/gradle-8.8-bin.zip"
+          ZIP="/tmp/gradle.zip"
 
-      - name: Generate Gradle Wrapper
-        if: steps.detect.outputs.need_wrap == 'yes'
+          # 重试下载（最多 6 次，逐步延迟）
+          for i in 1 2 3 4 5 6; do
+            echo "Downloading Gradle (try #$i)..."
+            if curl -fL --retry 6 --retry-all-errors \
+                 --connect-timeout 20 --max-time 300 \
+                 -o "$ZIP" "$URL"; then
+              break
+            fi
+            sleep $((i*4))
+          done
+
+          # 严格校验：确保文件存在且非空
+          if [[ ! -s "$ZIP" ]]; then
+            echo "❌ Failed to download Gradle distribution (file missing or empty)."
+            exit 1
+          fi
+
+          unzip -q "$ZIP" -d /tmp
+          /tmp/gradle-8.8/bin/gradle -v
+          /tmp/gradle-8.8/bin/gradle wrapper --gradle-version 8.8
+
+      - name: Make gradlew executable
         shell: bash
-        run: /tmp/gradle-8.8/bin/gradle wrapper --gradle-version 8.8
+        run: chmod +x ./gradlew
+
 
       - name: Make gradlew executable
         shell: bash
