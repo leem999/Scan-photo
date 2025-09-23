@@ -5,14 +5,12 @@ pluginManagement {
     mavenCentral()
   }
 }
-
 dependencyResolutionManagement {
-  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) // 或 PREFER_SETTINGS
   repositories {
     google()
     mavenCentral()
   }
 }
-
-rootProject.name = "Scan-photo"   // 可改成你的工程名
+rootProject.name = "Scan-photo"
 include(":app")
