@@ -104,8 +104,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --no-parallel --max-workers=1 -Dorg.gradle.jvmargs="-Xmx1024m -Dfile.encoding=UTF-8" \
-            --stacktrace --info clean assembleDebug -x test -x lint | tee build.log
+          ./gradlew clean --no-daemon
+          ./gradlew --no-daemon --stacktrace --info assembleDebug
 
       # F. 上传日志（无论成功失败都上传）
       - name: Upload build log (always)
