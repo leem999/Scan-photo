@@ -22,7 +22,7 @@
         android:layout_gravity="top|end"
         android:layout_margin="12dp" />
 
-    <!-- 预留叠加层容器（后续画四角/框用） -->
+    <!-- 叠加层容器（后续画框/四角标） -->
     <FrameLayout
         android:id="@+id/overlayContainer"
         android:layout_width="match_parent"
