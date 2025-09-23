@@ -1,2 +1,5 @@
-res/values/themes.xml
-<style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar" />
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- 可留空，AAPT2 只要能解析到主题即可 -->
+  </style>
+</resources>
