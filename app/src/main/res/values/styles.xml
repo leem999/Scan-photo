@@ -1,0 +1,4 @@
+<resources>
+    <!-- 选一个平台自带主题做父主题，避免额外依赖 -->
+    <style name="Theme.App" parent="Theme.Material.Light.NoActionBar" />
+</resources>
