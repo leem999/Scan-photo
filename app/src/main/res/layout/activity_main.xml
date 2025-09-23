@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 相机取景：CameraX 的 PreviewView -->
+    <!-- 预览：CameraX PreviewView（不使用 app:* 自定义属性） -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:implementationMode="performance" />
+        android:layout_height="match_parent" />
 
     <!-- 四角标注 -->
     <TextView
