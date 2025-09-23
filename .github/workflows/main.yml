@@ -1,4 +1,5 @@
-name: Android CI
+name: Android CI (auto-detect + robust logs)
+
 on:
   workflow_dispatch:
   push:
@@ -7,8 +8,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      # A. 自动探测含 settings.gradle 的工程目录
+      - name: Detect Gradle project dir
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAP=$(git ls-files | grep -E '(^|/)(settings\.gradle(\.kts)?)$' | grep -v '^\.github/' || true)
+          if [ -z "$MAP" ]; then
+            echo "❌ 没找到 settings.gradle（请确认工程文件已平铺到仓库根，或至少存在一个子目录内）"
+            exit 1
+          fi
+          FIRST=$(echo "$MAP" | head -n 1)
+          PROJECT_DIR=$(dirname "$FIRST")
+          if [ "$PROJECT_DIR" = "." ]; then PROJECT_DIR="."; fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "✅ Project dir: $PROJECT_DIR"
+          echo "---- tree ----"
+          ls -la "$PROJECT_DIR"
+          find "$PROJECT_DIR" -maxdepth 2 -type f \( -name "settings.gradle*" -o -name "build.gradle*" -o -name "gradle.properties" \) -print
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,78 +51,74 @@ jobs:
         with:
           cache-disabled: true
 
-      # ---- 1) 检查是否已有 wrapper ----
-      - name: Detect wrapper
-        id: detect
-        shell: bash
-        run: |
-          if [ -x "./gradlew" ] && [ -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "need_wrap=no" >> "$GITHUB_OUTPUT"
-          else
-            echo "need_wrap=yes" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ---- 2) 如缺失，则下载 Gradle 并生成 wrapper（分成三步，避免多行脚本） ----
+      # B. 生成 Gradle Wrapper（若缺失），并带重试校验
       - name: Ensure Gradle Wrapper (safe with retries)
+        working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -euo pipefail
-          # 如果已有 wrapper，直接跳过
           if [[ -x "./gradlew" && -f "./gradle/wrapper/gradle-wrapper.jar" ]]; then
-           echo "gradlew & wrapper jar already present."
+            echo "gradlew & wrapper jar already present."
             exit 0
           fi
-
           URL="https://services.gradle.org/distributions/gradle-8.8-bin.zip"
           ZIP="/tmp/gradle.zip"
-
-          # 重试下载（最多 6 次，逐步延迟）
           for i in 1 2 3 4 5 6; do
             echo "Downloading Gradle (try #$i)..."
-            if curl -fL --retry 6 --retry-all-errors \
-                 --connect-timeout 20 --max-time 300 \
-                 -o "$ZIP" "$URL"; then
+            if curl -fL --retry 6 --retry-all-errors --connect-timeout 20 --max-time 300 -o "$ZIP" "$URL"; then
               break
             fi
             sleep $((i*4))
           done
-
-          # 严格校验：确保文件存在且非空
           if [[ ! -s "$ZIP" ]]; then
             echo "❌ Failed to download Gradle distribution (file missing or empty)."
             exit 1
           fi
-
           unzip -q "$ZIP" -d /tmp
           /tmp/gradle-8.8/bin/gradle -v
           /tmp/gradle-8.8/bin/gradle wrapper --gradle-version 8.8
 
-      - name: Make gradlew executable
+      # C. 二次校验 gradlew 是否存在并可执行（防止 127）
+      - name: Verify gradlew exists
+        working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
-        run: chmod +x ./gradlew
+        run: |
+          set -euo pipefail
+          ls -l .
+          test -f "./gradlew" || (echo "❌ gradlew 不存在（工作目录：$(pwd)）" && exit 127)
+          chmod +x ./gradlew
+          test -x "./gradlew" || (echo "❌ gradlew 不可执行" && exit 127)
+          echo "✅ gradlew 就绪"
 
-
-      - name: Make gradlew executable
+      # D. 打印 gradle.properties（确认 AndroidX 等开关）
+      - name: Print gradle.properties
+        working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
-        run: chmod +x ./gradlew
+        run: |
+          echo "---- gradle.properties ----"
+          if [ -f gradle.properties ]; then cat gradle.properties; else echo "(not found)"; fi
 
-      # ---- 3) 编译，并把日志保存成工件（方便排错） ----
+      # E. 构建（限制并发和内存；将日志保存以便排错）
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -o pipefail
-          run: ./gradlew --no-daemon --no-parallel --max-workers=1 -Dorg.gradle.jvmargs="-Xmx1024m -Dfile.encoding=UTF-8" --stacktrace --info clean assembleDebug -x test -x lint | tee build.log
+          ./gradlew --no-daemon --no-parallel --max-workers=1 -Dorg.gradle.jvmargs="-Xmx1024m -Dfile.encoding=UTF-8" \
+            --stacktrace --info clean assembleDebug -x test -x lint | tee build.log
 
+      # F. 上传日志（无论成功失败都上传）
       - name: Upload build log (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build.log
-          path: build.log
+          path: ${{ env.PROJECT_DIR }}/build.log
 
+      # G. 上传 APK（仅成功时）
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
