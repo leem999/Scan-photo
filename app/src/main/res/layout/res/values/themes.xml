@@ -1,1 +1,2 @@
 res/values/themes.xml
+<style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar" />
