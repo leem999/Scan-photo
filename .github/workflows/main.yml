@@ -10,6 +10,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+     - name: Build (debug) with verbose log
+        run: |
+            set -e
+            echo "===== Dump AndroidManifest.xml (head) ====="
+            sed -n '1,80p' app/src/main/AndroidManifest.xml || true
+            echo "==========================================="
+            ./gradlew clean assembleDebug --stacktrace --console=plain | tee build.log
+
       - name: Checkout
         uses: actions/checkout@v4
 
