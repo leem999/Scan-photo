@@ -1,4 +1,5 @@
 name: Android CI
+
 on:
   workflow_dispatch:
   push:
@@ -7,8 +8,30 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 1) 自动定位 Gradle 项目目录（含 settings.gradle 的目录）
+      - name: Locate project dir
+        id: detect
+        shell: bash
+        run: |
+          set -euxo pipefail
+          W="."
+          if [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
+            W="."
+          elif [ -d Scan-photo ] && [ -f Scan-photo/settings.gradle ]; then
+            W="Scan-photo"
+          else
+            cand="$(git ls-files | grep -E 'settings\.gradle(\.kts)?$' | head -n1 || true)"
+            if [ -n "$cand" ]; then W="$(dirname "$cand")"; fi
+          fi
+          echo "workdir=$W" >> "$GITHUB_OUTPUT"
+          echo "Using workdir=$W"
+          : > "$GITHUB_WORKSPACE/build.log"
+          (cd "$W" && pwd && ls -la)
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,40 +47,54 @@ jobs:
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
           yes | sdkmanager --licenses
 
-      - name: Setup Gradle
+      - name: Setup Gradle (with cache)
         uses: gradle/actions/setup-gradle@v3
-        with:
-          cache-disabled: true
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      # 关键：把输出同时写入 build.log，方便失败后上传
-      - name: Build (capture full log)
+      # 2) 若缺少 gradlew，则临时下载 gradle 8.8 来生成 wrapper
+      - name: Generate Gradle wrapper if missing
+        working-directory: ${{ steps.detect.outputs.workdir }}
+        shell: bash
         run: |
-          set -uo pipefail
-          : > build.log
-          ./gradlew --version                           2>&1 | tee -a build.log
-          ./gradlew clean                              --no-daemon           2>&1 | tee -a build.log
-          # 单独跑一遍资源任务，让 AAPT2 把真正的报错细节吐干净
-          ./gradlew :app:processDebugResources -i --stacktrace --no-daemon    2>&1 | tee -a build.log
-          # 再尝试完整打包
-          ./gradlew assembleDebug --stacktrace --no-daemon                    2>&1 | tee -a build.log
+          if [ ! -x "./gradlew" ]; then
+            curl -L -o gradle.zip https://services.gradle.org/distributions/gradle-8.8-bin.zip
+            unzip -q gradle.zip
+            ./gradle-8.8/bin/gradle wrapper --gradle-version 8.8
+          fi
+          chmod +x ./gradlew
 
-      # 关键：即便失败也上传日志
-      - name: Upload build.log
+      - name: Show Gradle info
+        working-directory: ${{ steps.detect.outputs.workdir }}
+        run: |
+          ./gradlew -v 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log"
+          ./gradlew projects 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log" || true
+
+      # 3) 真正构建；即使失败也继续，以便我们上传日志/产物
+      - name: Build debug APK
+        id: build
+        continue-on-error: true
+        working-directory: ${{ steps.detect.outputs.workdir }}
+        run: |
+          set -o pipefail
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log"
+
+      # 4) 总是上传日志
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
-          if-no-files-found: warn
+          path: ${{ github.workspace }}/build.log
 
-      # 若有 APK 就一并传上来（没有也不报错）
+      # 5) 如有 APK 就上传，没有也忽略，不再报错
       - name: Upload APK (if any)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
+          name: apk-debug
+          path: ${{ steps.detect.outputs.workdir }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+      # 6) 如果构建步骤失败，则让整个任务失败（但日志已上传）
+      - name: Fail job if build failed
+        if: ${{ steps.build.outcome == 'failure' }}
+        run: exit 1
